@@ -3,24 +3,66 @@ import { scoreContent } from './scoring'
 import type { SearchResult, SearchParams } from './types'
 import fs from 'fs'
 
+// 計算標題中 CJK/特殊文字的比例
+function scriptRatio(title: string, pattern: RegExp): number {
+  if (!title.length) return 0
+  const matches = title.match(pattern) || []
+  return matches.length / title.length
+}
+
 // Filter results by title script to match region's expected language
+// 使用比例制，允許混合語言標題（例如中文標題夾雜英文遊戲名）
 function isRelevantForRegion(title: string, region: string): boolean {
-  const hasChinese = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/.test(title)
-  const hasJapanese = /[\u3040-\u309f\u30a0-\u30ff]/.test(title)
-  const hasKorean = /[\uac00-\ud7af]/.test(title)
-  const hasThai = /[\u0e00-\u0e7f]/.test(title)
+  const CJK = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g
+  const JP  = /[\u3040-\u309f\u30a0-\u30ff]/g
+  const KR  = /[\uac00-\ud7af]/g
+  const TH  = /[\u0e00-\u0e7f]/g
   const hasVietnamese = /[àáâãèéêìíòóôõùúýăđơưạảấầẩẫậắặẹẻẽếềệỉịọỏốồổỗộớờởỡợụủứừựỷỹ]/i.test(title)
 
   switch (region) {
-    case 'TW': return hasChinese
-    case 'JP': return hasJapanese
-    case 'KR': return hasKorean
-    case 'TH': return hasThai
-    case 'VN': return hasVietnamese || (!hasChinese && !hasJapanese && !hasKorean && !hasThai)
+    // 中文地區：至少 15% 中文字元即可（允許大量英文混入）
+    case 'TW': return scriptRatio(title, CJK) >= 0.15
+    // 日文：至少有日文假名
+    case 'JP': return scriptRatio(title, JP) > 0
+    // 韓文：至少有韓文
+    case 'KR': return scriptRatio(title, KR) > 0
+    // 泰文：至少有泰文
+    case 'TH': return scriptRatio(title, TH) > 0
+    // 越南：有越南文，或沒有其他亞洲文字
+    case 'VN': return hasVietnamese || (scriptRatio(title, CJK) + scriptRatio(title, JP) + scriptRatio(title, KR) + scriptRatio(title, TH) < 0.1)
+    // US/PH：允許最多 20% CJK（遊戲名可能是中文）
     case 'US':
-    case 'PH': return !hasChinese && !hasJapanese && !hasKorean && !hasThai
+    case 'PH': return (scriptRatio(title, CJK) + scriptRatio(title, JP) + scriptRatio(title, KR) + scriptRatio(title, TH)) < 0.2
     default: return true
   }
+}
+
+// 遊戲名稱正規化比對：移除標點/空格，支援大小寫與部分匹配
+function isGameRelevant(title: string, description: string, gameName: string): boolean {
+  const normalize = (s: string) => s.toLowerCase().replace(/[\s.\-_\/\\·•]/g, '')
+  const normGame = normalize(gameName)
+  const normTitle = normalize(title)
+  const normDesc = normalize(description)
+
+  // 完整正規化比對
+  if (normTitle.includes(normGame) || normDesc.includes(normGame)) return true
+
+  // 拆詞比對：英文以空格/點分割，中文以 2 字元為單位
+  const words = gameName.split(/[\s.\-_\/\\]/).filter(w => w.length >= 2)
+  for (const word of words) {
+    const normWord = normalize(word)
+    if (normTitle.includes(normWord) || normDesc.includes(normWord)) return true
+  }
+
+  // 中文拆字：每 2 個字元為一組滑動視窗
+  if (/[\u4e00-\u9fff]/.test(gameName)) {
+    for (let i = 0; i <= gameName.length - 2; i++) {
+      const chunk = gameName.slice(i, i + 2)
+      if (title.includes(chunk) || description.includes(chunk)) return true
+    }
+  }
+
+  return false
 }
 
 // Parse ISO 8601 duration → total seconds
@@ -157,11 +199,8 @@ export async function searchYouTube(params: SearchParams): Promise<SearchResult[
     // 依地區語言過濾標題
     if (!isRelevantForRegion(snippet?.title || '', params.region)) continue
 
-    // 遊戲名稱相關性過濾：標題或說明至少要出現遊戲名稱
-    const gameNameLower = params.game.toLowerCase()
-    const titleLower = (snippet?.title || '').toLowerCase()
-    const descLower = description.toLowerCase()
-    if (!titleLower.includes(gameNameLower) && !descLower.includes(gameNameLower)) continue
+    // 遊戲名稱相關性過濾：支援正規化與部分比對
+    if (!isGameRelevant(snippet?.title || '', description, params.game)) continue
 
     const { score, signals } = scoreContent(snippet?.title || '', description, params.game)
 
