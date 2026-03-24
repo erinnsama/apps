@@ -156,5 +156,5 @@ export function scoreContent(
   else if (highCount >= 1 || mediumCount >= 3) score = 2
   else if (mediumCount >= 1 || lowCount >= 2) score = 1
 
-  return { score, signals: [...new Set(detectedSignals)] }
+  return { score, signals: Array.from(new Set(detectedSignals)) }
 }
