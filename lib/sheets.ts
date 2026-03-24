@@ -3,13 +3,17 @@ import type { SearchResult } from './types'
 import fs from 'fs'
 
 export async function exportToSheets(results: SearchResult[], sheetId: string) {
-  const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_PATH
-  if (!keyPath) throw new Error('GOOGLE_SERVICE_ACCOUNT_PATH 未設定')
-
-  const keyFile = JSON.parse(fs.readFileSync(keyPath, 'utf-8'))
+  let credentials: any
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
+  } else {
+    const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_PATH
+    if (!keyPath) throw new Error('請設定 GOOGLE_SERVICE_ACCOUNT_JSON 或 GOOGLE_SERVICE_ACCOUNT_PATH')
+    credentials = JSON.parse(fs.readFileSync(keyPath, 'utf-8'))
+  }
 
   const auth = new google.auth.GoogleAuth({
-    credentials: keyFile,
+    credentials,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   })
 
