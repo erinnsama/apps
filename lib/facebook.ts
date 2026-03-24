@@ -1,21 +1,14 @@
 import { scoreContent } from './scoring'
 import type { SearchResult, SearchParams } from './types'
 
-async function getAppAccessToken(): Promise<string> {
-  const appId = process.env.FACEBOOK_APP_ID
-  const appSecret = process.env.FACEBOOK_APP_SECRET
-  if (!appId || !appSecret) throw new Error('FACEBOOK_APP_ID 或 FACEBOOK_APP_SECRET 未設定')
-
-  const res = await fetch(
-    `https://graph.facebook.com/oauth/access_token?client_id=${appId}&client_secret=${appSecret}&grant_type=client_credentials`
-  )
-  const data = await res.json()
-  if (!data.access_token) throw new Error(data.error?.message || 'Facebook 取得 access token 失敗')
-  return data.access_token
+function getToken(): string {
+  const userToken = process.env.FACEBOOK_USER_TOKEN
+  if (!userToken) throw new Error('FACEBOOK_USER_TOKEN 未設定')
+  return userToken
 }
 
 export async function searchFacebook(params: SearchParams): Promise<SearchResult[]> {
-  const token = await getAppAccessToken()
+  const token = getToken()
 
   const query = [params.game, params.keywords].filter(Boolean).join(' ')
 
