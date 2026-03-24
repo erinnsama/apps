@@ -17,6 +17,7 @@ interface KOLSummary {
 }
 
 type SortKey = 'subscribers' | 'videos' | 'views' | 'score'
+type VideoSortKey = 'score' | 'views' | 'date'
 
 function fmt(n?: number) {
   if (!n) return '-'
@@ -25,10 +26,48 @@ function fmt(n?: number) {
   return n.toLocaleString()
 }
 
+function engagementRate(v: SearchResult): number | undefined {
+  if (!v.viewCount || v.viewCount === 0) return undefined
+  const interactions = (v.likeCount || 0) + (v.commentCount || 0)
+  return interactions / v.viewCount * 100
+}
+
+function fmtEng(rate?: number): string {
+  if (rate === undefined) return '-'
+  return rate.toFixed(2) + '%'
+}
+
+// 計算平均發布間隔（天）
+function avgIntervalDays(videos: SearchResult[]): string {
+  const dates = videos
+    .map(v => v.publishedAt)
+    .filter(Boolean)
+    .map(d => new Date(d).getTime())
+    .filter(t => !isNaN(t))
+    .sort((a, b) => a - b)
+  if (dates.length < 2) return '-'
+  const intervals: number[] = []
+  for (let i = 1; i < dates.length; i++) {
+    intervals.push((dates[i] - dates[i - 1]) / (1000 * 60 * 60 * 24))
+  }
+  const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length
+  if (avg < 1) return '< 1 天/部'
+  return `約 ${Math.round(avg)} 天/部`
+}
+
+function sortVideos(videos: SearchResult[], key: VideoSortKey): SearchResult[] {
+  return [...videos].sort((a, b) => {
+    if (key === 'views') return (b.viewCount || 0) - (a.viewCount || 0)
+    if (key === 'date') return (b.publishedAt || '').localeCompare(a.publishedAt || '')
+    return b.score - a.score
+  })
+}
+
 export default function KOLPanel({ results }: { results: SearchResult[] }) {
   const [sortKey, setSortKey] = useState<SortKey>('subscribers')
   const [collabOnly, setCollabOnly] = useState(false)
   const [expandedChannel, setExpandedChannel] = useState<string | null>(null)
+  const [videoSort, setVideoSort] = useState<VideoSortKey>('score')
 
   const kols = useMemo<KOLSummary[]>(() => {
     const map = new Map<string, KOLSummary>()
@@ -131,16 +170,17 @@ export default function KOLPanel({ results }: { results: SearchResult[] }) {
             ? `https://www.youtube.com/channel/${kol.channelId}`
             : undefined
 
+          const longVideos = kol.videos.filter(v => !v.isShort)
+          const shorts = kol.videos.filter(v => v.isShort)
+
           return (
             <div key={key} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
               {/* Channel row */}
               <div className="flex items-center gap-3 px-4 py-3">
-                {/* Score badge */}
                 <span className={`text-xs px-2 py-0.5 rounded border font-medium shrink-0 ${SCORE_STYLE[kol.topScore]}`}>
                   {SCORE_LABEL[kol.topScore]}
                 </span>
 
-                {/* Channel name */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     {channelUrl ? (
@@ -178,7 +218,6 @@ export default function KOLPanel({ results }: { results: SearchResult[] }) {
                   )}
                 </div>
 
-                {/* Stats */}
                 <div className="flex items-center gap-4 text-xs text-slate-400 shrink-0">
                   <div className="text-center">
                     <div className="text-white font-medium">{fmt(kol.subscriberCount)}</div>
@@ -201,39 +240,56 @@ export default function KOLPanel({ results }: { results: SearchResult[] }) {
                 </div>
               </div>
 
-              {/* Expanded video list */}
+              {/* Expanded section */}
               {isExpanded && (
-                <div className="border-t border-slate-700 divide-y divide-slate-700/50">
-                  {kol.videos
-                    .sort((a, b) => b.score - a.score)
-                    .map((v, i) => (
-                      <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-700/30 transition-colors">
-                        {v.thumbnailUrl && (
-                          <img src={v.thumbnailUrl} alt="" className="w-20 h-11 object-cover rounded shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <a
-                            href={v.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-slate-200 text-sm hover:text-blue-400 transition-colors line-clamp-2"
-                          >
-                            {v.title}
-                          </a>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
-                            <span>{v.publishedAt}</span>
-                            {v.isShort && <span className="bg-rose-900/60 text-rose-300 border border-rose-800/50 px-1.5 py-0.5 rounded">Short</span>}
-                            {v.viewCount && <span>👁 {fmt(v.viewCount)}</span>}
-                            {v.signals.length > 0 && (
-                              <span className="text-slate-600">{v.signals.slice(0, 3).join('・')}</span>
-                            )}
-                          </div>
-                        </div>
-                        <span className={`text-xs px-2 py-0.5 rounded border shrink-0 ${SCORE_STYLE[v.score]}`}>
-                          {SCORE_LABEL[v.score]}
-                        </span>
-                      </div>
+                <div className="border-t border-slate-700">
+                  {/* Video sort controls */}
+                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-800/80">
+                    <span className="text-slate-500 text-xs">影片排序：</span>
+                    {([
+                      { k: 'score', label: '評分' },
+                      { k: 'views', label: '觀看數' },
+                      { k: 'date', label: '最新' },
+                    ] as { k: VideoSortKey; label: string }[]).map(({ k, label }) => (
+                      <button
+                        key={k}
+                        onClick={() => setVideoSort(k)}
+                        className={`text-xs px-2.5 py-0.5 rounded-full border transition-colors ${videoSort === k ? 'bg-slate-600 border-slate-400 text-white' : 'border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                      >
+                        {label}
+                      </button>
                     ))}
+                  </div>
+
+                  {/* Long videos section */}
+                  {longVideos.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-3 px-4 py-2 bg-slate-700/30">
+                        <span className="text-xs font-medium text-slate-300">長片 {longVideos.length} 部</span>
+                        <span className="text-xs text-slate-500">發布頻率：{avgIntervalDays(longVideos)}</span>
+                      </div>
+                      <div className="divide-y divide-slate-700/50">
+                        {sortVideos(longVideos, videoSort).map((v, i) => (
+                          <VideoRow key={i} v={v} SCORE_STYLE={SCORE_STYLE} SCORE_LABEL={SCORE_LABEL} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Shorts section */}
+                  {shorts.length > 0 && (
+                    <div className={longVideos.length > 0 ? 'border-t border-slate-700' : ''}>
+                      <div className="flex items-center gap-3 px-4 py-2 bg-rose-900/10">
+                        <span className="text-xs font-medium text-rose-300">Shorts {shorts.length} 部</span>
+                        <span className="text-xs text-slate-500">發布頻率：{avgIntervalDays(shorts)}</span>
+                      </div>
+                      <div className="divide-y divide-slate-700/50">
+                        {sortVideos(shorts, videoSort).map((v, i) => (
+                          <VideoRow key={i} v={v} SCORE_STYLE={SCORE_STYLE} SCORE_LABEL={SCORE_LABEL} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -244,6 +300,52 @@ export default function KOLPanel({ results }: { results: SearchResult[] }) {
       {sorted.length === 0 && (
         <p className="text-slate-500 text-center mt-10">沒有符合條件的頻道</p>
       )}
+    </div>
+  )
+}
+
+function VideoRow({
+  v,
+  SCORE_STYLE,
+  SCORE_LABEL,
+}: {
+  v: SearchResult
+  SCORE_STYLE: Record<number, string>
+  SCORE_LABEL: Record<number, string>
+}) {
+  const eng = engagementRate(v)
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-700/30 transition-colors">
+      {v.thumbnailUrl && (
+        <img src={v.thumbnailUrl} alt="" className="w-20 h-11 object-cover rounded shrink-0" />
+      )}
+      <div className="flex-1 min-w-0">
+        <a
+          href={v.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-slate-200 text-sm hover:text-blue-400 transition-colors line-clamp-2"
+        >
+          {v.title}
+        </a>
+        <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 flex-wrap">
+          <span>{v.publishedAt}</span>
+          {v.viewCount ? <span>👁 {fmt(v.viewCount)}</span> : null}
+          {v.likeCount ? <span>👍 {fmt(v.likeCount)}</span> : null}
+          {v.commentCount ? <span>💬 {fmt(v.commentCount)}</span> : null}
+          {eng !== undefined && (
+            <span className={`font-medium ${eng >= 5 ? 'text-green-400' : eng >= 2 ? 'text-yellow-400' : 'text-slate-400'}`}>
+              互動率 {fmtEng(eng)}
+            </span>
+          )}
+          {v.signals.length > 0 && (
+            <span className="text-slate-600">{v.signals.slice(0, 3).join('・')}</span>
+          )}
+        </div>
+      </div>
+      <span className={`text-xs px-2 py-0.5 rounded border shrink-0 ${SCORE_STYLE[v.score]}`}>
+        {SCORE_LABEL[v.score]}
+      </span>
     </div>
   )
 }
