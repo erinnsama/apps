@@ -157,6 +157,12 @@ export async function searchYouTube(params: SearchParams): Promise<SearchResult[
     // 依地區語言過濾標題
     if (!isRelevantForRegion(snippet?.title || '', params.region)) continue
 
+    // 遊戲名稱相關性過濾：標題或說明至少要出現遊戲名稱
+    const gameNameLower = params.game.toLowerCase()
+    const titleLower = (snippet?.title || '').toLowerCase()
+    const descLower = description.toLowerCase()
+    if (!titleLower.includes(gameNameLower) && !descLower.includes(gameNameLower)) continue
+
     const { score, signals } = scoreContent(snippet?.title || '', description, params.game)
 
     results.push({
