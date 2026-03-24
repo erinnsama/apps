@@ -330,6 +330,10 @@ function VideoRow({
         </a>
         <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 flex-wrap">
           <span>{v.publishedAt}</span>
+          {v.isShort
+            ? <span className="bg-rose-900/60 text-rose-300 border border-rose-800/50 px-1.5 py-0.5 rounded">Short</span>
+            : <span className="bg-slate-700/60 text-slate-400 border border-slate-600 px-1.5 py-0.5 rounded">長片</span>
+          }
           {v.viewCount ? <span>👁 {fmt(v.viewCount)}</span> : null}
           {v.likeCount ? <span>👍 {fmt(v.likeCount)}</span> : null}
           {v.commentCount ? <span>💬 {fmt(v.commentCount)}</span> : null}
