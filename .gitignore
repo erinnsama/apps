@@ -10,3 +10,5 @@ npm-debug.log*
 *.pem
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
