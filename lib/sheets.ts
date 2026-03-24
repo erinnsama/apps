@@ -42,15 +42,19 @@ export async function exportToSheets(results: SearchResult[], sheetId: string) {
   const targetId = sheetId || process.env.DEFAULT_SHEET_ID
   if (!targetId) throw new Error('請提供 Google Sheet ID')
 
+  // 取得第一個分頁的名稱（相容中英文介面）
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: targetId })
+  const firstSheet = meta.data.sheets?.[0]?.properties?.title || 'Sheet1'
+
   // 清除舊資料並寫入
   await sheets.spreadsheets.values.clear({
     spreadsheetId: targetId,
-    range: 'Sheet1',
+    range: firstSheet,
   })
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: targetId,
-    range: 'Sheet1!A1',
+    range: `${firstSheet}!A1`,
     valueInputOption: 'RAW',
     requestBody: { values: [headers, ...rows] },
   })
