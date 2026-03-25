@@ -8,7 +8,7 @@ const NON_GAME_BRANDS = [
   '全聯', '7-eleven', '萊爾富', '全家', 'familymart',
 ]
 
-// ★★★ 高度訊號 — 明確的業配/廣告/贊助聲明
+// ★★★ 高度訊號 — 明確的業配/廣告/贊助聲明，或追蹤導流連結
 const HIGH_SIGNALS: Record<string, string> = {
   '#ad': '#AD 標示',
   '#sponsored': '#Sponsored 標示',
@@ -37,9 +37,11 @@ const HIGH_SIGNALS: Record<string, string> = {
   '感謝.*贊助': '贊助感謝語',
   '感謝.*合作': '合作感謝語',
   '感謝.*提供': '提供感謝語',
+  'onelink': 'OneLink 追蹤連結',
+  '邀請碼': '邀請碼（工商證據）',
 }
 
-// ★★ 中度訊號 — 間接促銷、下載導流
+// ★★ 中度訊號 — 下載導流、社群連結
 const MEDIUM_SIGNALS: Record<string, string> = {
   'download now': '下載連結',
   '立即下載': '立即下載連結',
@@ -48,7 +50,11 @@ const MEDIUM_SIGNALS: Record<string, string> = {
   '點擊下載': '點擊下載連結',
   'app store': 'App Store 連結',
   'google play': 'Google Play 連結',
-  'onelink': 'OneLink 追蹤連結',
+  'apk': 'APK 下載連結',
+  'facebook.com': '遊戲 FB 專頁連結',
+  'fb.com': '遊戲 FB 專頁連結',
+  'discord.gg': 'Discord 社群連結',
+  'discord.com/invite': 'Discord 邀請連結',
   'bit.ly': '短網址連結',
   'linktr.ee': 'Linktree 連結',
   '代言': '代言字詞',
@@ -57,20 +63,20 @@ const MEDIUM_SIGNALS: Record<string, string> = {
   '推廣': '推廣字詞',
   '體驗': '體驗活動字詞',
   '試用': '試用字詞',
-  '禮包': '遊戲禮包',
-  'gift code': '禮包碼',
-  '活動碼': '活動碼',
   '折扣碼': '折扣碼',
   '優惠碼': '優惠碼',
-  '邀請碼': '邀請碼',
   'promo code': 'Promo Code',
   'referral': '推薦連結',
-  '免費禮包': '免費禮包',
   '免費獲得': '免費獲取活動',
 }
 
-// ★ 低度訊號 — 疑似但不確定
+// ★ 低度訊號 — 疑似但不確定（如禮包碼可能為創作者自發）
 const LOW_SIGNALS: Record<string, string> = {
+  '禮包碼': '禮包碼（可能自發）',
+  '禮包': '遊戲禮包（可能自發）',
+  'gift code': '禮包碼（可能自發）',
+  '活動碼': '活動碼（可能自發）',
+  '免費禮包': '免費禮包（可能自發）',
   '試玩': '試玩內容',
   '首玩': '首玩內容',
   '開箱': '開箱內容',
@@ -150,11 +156,13 @@ export function scoreContent(
   }
 
   // 計算最終評分
+  // ★★★：任何一個高度訊號（明確業配聲明 / OneLink / 邀請碼）
+  // ★★：有下載連結、社群導流等中度訊號
+  // ★：僅有禮包碼、試玩等低度訊號
   let score: 1 | 2 | 3 = 1
-  if (highCount >= 1 && mediumCount >= 2) score = 3
-  else if (highCount >= 2) score = 3
-  else if (highCount >= 1 || mediumCount >= 3) score = 2
-  else if (mediumCount >= 1 || lowCount >= 2) score = 1
+  if (highCount >= 1) score = 3
+  else if (mediumCount >= 1) score = 2
+  else if (lowCount >= 1) score = 1
 
   return { score, signals: Array.from(new Set(detectedSignals)) }
 }
