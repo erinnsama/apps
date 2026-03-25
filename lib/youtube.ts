@@ -99,10 +99,17 @@ function getAuth() {
   })
 }
 
-export async function searchYouTube(params: SearchParams): Promise<SearchResult[]> {
-  const auth = getAuth()
-  const youtube = google.youtube({ version: 'v3', auth })
+function isQuotaError(e: any): boolean {
+  const msg = (e.message || '').toLowerCase()
+  return msg.includes('quota') || msg.includes('quotaexceeded') || e.code === 403 || e.status === 403
+}
 
+async function searchYouTubeWithKey(apiKey: string, params: SearchParams): Promise<SearchResult[]> {
+  const youtube = google.youtube({ version: 'v3', auth: apiKey })
+  return _searchWithYoutube(youtube, params)
+}
+
+async function _searchWithYoutube(youtube: any, params: SearchParams): Promise<SearchResult[]> {
   const query = [params.game, params.keywords].filter(Boolean).join(' ')
 
   const searchParams: any = {
@@ -225,4 +232,21 @@ export async function searchYouTube(params: SearchParams): Promise<SearchResult[
   }
 
   return results.sort((a, b) => b.score - a.score)
+}
+
+export async function searchYouTube(params: SearchParams): Promise<SearchResult[]> {
+  const key2 = process.env.YOUTUBE_API_KEY_2
+
+  // 主要：使用 Service Account（專案A）
+  try {
+    const auth = getAuth()
+    const youtube = google.youtube({ version: 'v3', auth })
+    return await _searchWithYoutube(youtube, params)
+  } catch (e: any) {
+    // 配額用完時，自動切換到第二組 API Key（專案B）
+    if (isQuotaError(e) && key2) {
+      return await searchYouTubeWithKey(key2, params)
+    }
+    throw e
+  }
 }
