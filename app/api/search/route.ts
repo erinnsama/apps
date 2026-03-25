@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       tasks.push(searchYouTube(regionParams).catch(e => {
         const msg = e.message || ''
         if (msg.includes('quota') || msg.includes('quotaExceeded') || e.code === 403) {
-          errors.push(`⚠️ YouTube API 今日配額已用完，明天 UTC 00:00 自動重置後即可繼續使用`)
+          errors.push(`⚠️ YouTube API 今日配額已用完，明天早上 08:00（台灣時間）自動重置後即可繼續使用`)
         } else {
           errors.push(`YouTube(${region}): ` + msg)
         }
