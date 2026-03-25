@@ -29,7 +29,7 @@ interface Props {
 
 export default function SearchForm({ onSearch, loading }: Props) {
   const [game, setGame] = useState('')
-  const [keywords, setKeywords] = useState('更新, 試玩, 直播, 精華')
+  const [keywords, setKeywords] = useState('')
   const [regions, setRegions] = useState<string[]>(['TW'])
   const [platforms, setPlatforms] = useState<string[]>(['youtube'])
   const [dateFrom, setDateFrom] = useState('')
