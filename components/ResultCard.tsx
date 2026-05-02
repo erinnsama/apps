@@ -6,12 +6,14 @@ const PLATFORM_BADGE: Record<string, string> = {
   twitter: 'bg-sky-900/60 text-sky-300 border border-sky-800/50',
   facebook: 'bg-blue-900/60 text-blue-300 border border-blue-800/50',
   instagram: 'bg-pink-900/60 text-pink-300 border border-pink-800/50',
+  twitch: 'bg-purple-900/60 text-purple-300 border border-purple-800/50',
 }
 const PLATFORM_LABEL: Record<string, string> = {
   youtube: 'YouTube',
   twitter: 'Twitter/X',
   facebook: 'Facebook',
   instagram: 'Instagram',
+  twitch: 'Twitch',
 }
 const SCORE_CONFIG = [
   {},

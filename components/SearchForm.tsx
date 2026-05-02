@@ -208,6 +208,7 @@ export default function SearchForm({ onSearch, loading }: Props) {
             { id: 'youtube', label: 'YouTube', color: 'accent-red-500' },
             { id: 'instagram', label: 'Instagram', color: 'accent-pink-500' },
             { id: 'twitter', label: 'Twitter/X', color: 'accent-sky-500' },
+            { id: 'twitch', label: 'Twitch', color: 'accent-purple-500' },
           ].map(p => (
             <label key={p.id} className="flex items-center gap-2 cursor-pointer">
               <input

@@ -1,5 +1,5 @@
 export interface SearchResult {
-  platform: 'youtube' | 'twitter' | 'facebook' | 'instagram'
+  platform: 'youtube' | 'twitter' | 'facebook' | 'instagram' | 'twitch'
   title: string
   url: string
   channelName: string

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { searchYouTube } from '@/lib/youtube'
 import { searchTwitter } from '@/lib/twitter'
 import { searchInstagram } from '@/lib/instagram'
+import { searchTwitch } from '@/lib/twitch'
 import type { SearchParams } from '@/lib/types'
 
 export async function POST(req: NextRequest) {
@@ -39,6 +40,13 @@ export async function POST(req: NextRequest) {
     if (params.platforms.includes('instagram')) {
       tasks.push(searchInstagram(regionParams).catch(e => {
         errors.push(`Instagram(${region}): ` + e.message)
+        return []
+      }))
+    }
+
+    if (params.platforms.includes('twitch')) {
+      tasks.push(searchTwitch(regionParams).catch(e => {
+        errors.push(`Twitch(${region}): ` + e.message)
         return []
       }))
     }
