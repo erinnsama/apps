@@ -40,54 +40,32 @@ async function twitchFetch(path: string, token: string): Promise<any> {
 
 export async function searchTwitch(params: SearchParams): Promise<SearchResult[]> {
   const token = await getAppToken()
+  const results: SearchResult[] = []
 
-  // 搜尋遊戲 ID
+  // 先查遊戲 ID
   const gameData = await twitchFetch(
     `/games?name=${encodeURIComponent(params.game)}`,
     token
   )
   const gameId: string | undefined = gameData.data?.[0]?.id
 
-  const results: SearchResult[] = []
-
-  // 搜尋 Clips（最有業配訊號）
   if (gameId) {
-    const clipsPath = `/clips?game_id=${gameId}&first=20${params.dateFrom ? `&started_at=${new Date(params.dateFrom).toISOString()}` : ''}`
+    // 用遊戲 ID 搜 Clips
+    let clipsPath = `/clips?game_id=${gameId}&first=20`
+    if (params.dateFrom) clipsPath += `&started_at=${new Date(params.dateFrom).toISOString()}`
+
     const clipsData = await twitchFetch(clipsPath, token)
-    const clips = clipsData.data || []
-
-    // 取得 broadcaster 資訊（follower count 需另一支 API）
-    const broadcasterIds: string[] = [...new Set(clips.map((c: any) => c.broadcaster_id as string))]
-    const followerMap: Record<string, number> = {}
-    for (let i = 0; i < broadcasterIds.length; i += 100) {
-      const batch = broadcasterIds.slice(i, i + 100)
-      const ids = batch.map(id => `broadcaster_id=${id}`).join('&')
-      try {
-        const followData = await twitchFetch(`/channels/followers?${ids}&first=1`, token)
-        for (const ch of followData.data || []) {
-          // follower count not directly in this endpoint; use channel info instead
-        }
-        // Use channel info endpoint instead
-        const userIds = batch.map(id => `id=${id}`).join('&')
-        const usersData = await twitchFetch(`/users?${userIds}`, token)
-        // Twitch doesn't return follower count from /users, skip for now
-      } catch { /* ignore */ }
-    }
-
-    for (const clip of clips) {
+    for (const clip of clipsData.data || []) {
       if (params.dateTo) {
-        const clipDate = new Date(clip.created_at)
         const toDate = new Date(params.dateTo)
         toDate.setHours(23, 59, 59)
-        if (clipDate > toDate) continue
+        if (new Date(clip.created_at) > toDate) continue
       }
 
-      const titleText = clip.title || ''
-      const { score, signals } = scoreContent(titleText, titleText, params.game)
-
+      const { score, signals } = scoreContent(clip.title || '', clip.title || '', params.game)
       results.push({
         platform: 'twitch',
-        title: titleText,
+        title: clip.title || '',
         url: clip.url,
         channelName: clip.broadcaster_name,
         region: params.region,
@@ -96,29 +74,29 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
         signals,
         viewCount: clip.view_count,
         thumbnailUrl: clip.thumbnail_url,
-        description: titleText,
+        description: clip.title || '',
       })
     }
-  }
-
-  // 關鍵字搜尋 Clips（遊戲找不到 ID 時也能搜）
-  if (!gameId) {
-    const searchPath = `/clips?query=${encodeURIComponent(params.game)}&first=20`
+  } else {
+    // 找不到遊戲 ID 時，用 channel 搜尋作為備援
     try {
-      const searchData = await twitchFetch(searchPath, token)
-      for (const clip of searchData.data || []) {
-        const { score, signals } = scoreContent(clip.title || '', clip.title || '', params.game)
+      const searchData = await twitchFetch(
+        `/search/channels?query=${encodeURIComponent(params.game)}&first=20`,
+        token
+      )
+      for (const ch of searchData.data || []) {
+        if (!ch.is_live) continue
+        const { score, signals } = scoreContent(ch.display_name || '', ch.title || '', params.game)
         results.push({
           platform: 'twitch',
-          title: clip.title || '',
-          url: clip.url,
-          channelName: clip.broadcaster_name,
+          title: ch.title || ch.display_name || '',
+          url: `https://www.twitch.tv/${ch.broadcaster_login}`,
+          channelName: ch.display_name,
           region: params.region,
-          publishedAt: clip.created_at?.slice(0, 10) || '',
+          publishedAt: ch.started_at?.slice(0, 10) || '',
           score,
           signals,
-          viewCount: clip.view_count,
-          thumbnailUrl: clip.thumbnail_url,
+          thumbnailUrl: ch.thumbnail_url,
         })
       }
     } catch { /* ignore */ }
