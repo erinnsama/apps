@@ -20,8 +20,11 @@ function isRegionMatch(title: string, region: string, lang: string, country: str
     case 'TW': {
       if (country === 'TW') return true
       if (lang === 'zh-TW') return true
-      if (lang && lang !== 'zh-TW') return false
-      // 語言不明：有 CJK 且無日文/韓文才過
+      // 語言明確非中文 → 擋掉
+      if (lang && lang !== 'zh-TW' && lang !== 'zh') return false
+      // 頻道國家明確設定且非 TW → 擋掉（排除美國、日本等英文台）
+      if (country && country !== 'TW') return false
+      // 語言/國家都不明：標題有 CJK 且無日文/韓文才過
       const hasCJK = scriptRatio(title, CJK) >= 0.15
       const hasJP  = scriptRatio(title, JP) > 0
       const hasKR  = scriptRatio(title, KR) > 0
