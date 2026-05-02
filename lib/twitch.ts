@@ -60,12 +60,34 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
   const token = await getAppToken()
   const results: SearchResult[] = []
 
-  // 先查遊戲 ID
-  const gameData = await twitchFetch(
+  // 查遊戲 ID（同時搜原始名稱 + 透過 search 找近似名稱）
+  let gameId: string | undefined
+
+  const exactData = await twitchFetch(
     `/games?name=${encodeURIComponent(params.game)}`,
     token
   )
-  const gameId: string | undefined = gameData.data?.[0]?.id
+  if (exactData.data?.[0]?.id) {
+    gameId = exactData.data[0].id
+  } else {
+    // 找不到精確名稱時，用搜尋取第一個近似結果
+    try {
+      const searchData = await twitchFetch(
+        `/games?name=${encodeURIComponent(params.game)}&igdb_id=`,
+        token
+      )
+      if (!searchData.data?.[0]) {
+        // 嘗試 search categories
+        const catData = await twitchFetch(
+          `/search/categories?query=${encodeURIComponent(params.game)}&first=1`,
+          token
+        )
+        if (catData.data?.[0]) {
+          gameId = catData.data[0].id
+        }
+      }
+    } catch { /* ignore */ }
+  }
 
   if (gameId) {
     // Clips
@@ -97,13 +119,14 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
       })
     }
 
-    // VODs（錄影）
-    let vodsPath = `/videos?game_id=${gameId}&type=archive&first=30`
-    if (params.dateFrom) vodsPath += `&after=${encodeURIComponent(new Date(params.dateFrom).toISOString())}`
-
+    // VODs（錄影）— after 是 pagination cursor 不是日期，日期用 client 端過濾
     try {
-      const vodsData = await twitchFetch(vodsPath, token)
+      const vodsData = await twitchFetch(
+        `/videos?game_id=${gameId}&type=archive&first=30`,
+        token
+      )
       for (const vod of vodsData.data || []) {
+        if (params.dateFrom && new Date(vod.created_at) < new Date(params.dateFrom)) continue
         if (params.dateTo) {
           const toDate = new Date(params.dateTo)
           toDate.setHours(23, 59, 59)
