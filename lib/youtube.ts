@@ -3,59 +3,74 @@ import { scoreContent } from './scoring'
 import type { SearchResult, SearchParams } from './types'
 import fs from 'fs'
 
-// 計算標題中 CJK/特殊文字的比例
 function scriptRatio(title: string, pattern: RegExp): number {
   if (!title.length) return 0
   const matches = title.match(pattern) || []
   return matches.length / title.length
 }
 
-// Filter results by title script to match region's expected language
-// 使用比例制，允許混合語言標題（例如中文標題夾雜英文遊戲名）
-function isRelevantForRegion(title: string, region: string): boolean {
-  const CJK = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g
-  const JP  = /[\u3040-\u309f\u30a0-\u30ff]/g
-  const KR  = /[\uac00-\ud7af]/g
-  const TH  = /[\u0e00-\u0e7f]/g
-  const hasVietnamese = /[àáâãèéêìíòóôõùúýăđơưạảấầẩẫậắặẹẻẽếềệỉịọỏốồổỗộớờởỡợụủứừựỷỹ]/i.test(title)
+// 地區嚴格比對：結合影片語言、頻道國家、標題字元
+function isRegionMatch(title: string, region: string, lang: string, country: string): boolean {
+  const CJK = /[一-鿿㐀-䶿豈-﫿]/g
+  const JP  = /[぀-ゟ゠-ヿ]/g
+  const KR  = /[가-힯]/g
+  const TH  = /[฀-๿]/g
 
   switch (region) {
-    // 中文地區：至少 15% 中文字元即可（允許大量英文混入）
-    case 'TW': return scriptRatio(title, CJK) >= 0.15
-    // 日文：至少有日文假名
-    case 'JP': return scriptRatio(title, JP) > 0
-    // 韓文：至少有韓文
-    case 'KR': return scriptRatio(title, KR) > 0
-    // 泰文：至少有泰文
-    case 'TH': return scriptRatio(title, TH) > 0
-    // 越南：有越南文，或沒有其他亞洲文字
-    case 'VN': return hasVietnamese || (scriptRatio(title, CJK) + scriptRatio(title, JP) + scriptRatio(title, KR) + scriptRatio(title, TH) < 0.1)
-    // US/PH：允許最多 20% CJK（遊戲名可能是中文）
+    case 'TW': {
+      if (country === 'TW') return true
+      if (lang === 'zh-TW') return true
+      if (lang && lang !== 'zh-TW') return false
+      // 語言不明：有 CJK 且無日文/韓文才過
+      const hasCJK = scriptRatio(title, CJK) >= 0.15
+      const hasJP  = scriptRatio(title, JP) > 0
+      const hasKR  = scriptRatio(title, KR) > 0
+      return hasCJK && !hasJP && !hasKR
+    }
+    case 'JP':
+      if (country === 'JP') return true
+      if (lang && !lang.startsWith('ja')) return false
+      return scriptRatio(title, JP) > 0
+    case 'KR':
+      if (country === 'KR') return true
+      if (lang && !lang.startsWith('ko')) return false
+      return scriptRatio(title, KR) > 0
+    case 'TH':
+      if (country === 'TH') return true
+      if (lang && !lang.startsWith('th')) return false
+      return scriptRatio(title, TH) > 0
+    case 'VN': {
+      if (country === 'VN') return true
+      if (lang && !lang.startsWith('vi')) return false
+      const hasVietnamese = /[àáâãèéêìíòóôõùúýăđơưạảấầẩẫậắặẹẻẽếềệỉịọỏốồổỗộớờởỡợụủứừựỷỹ]/i.test(title)
+      const hasAsian = (scriptRatio(title, CJK) + scriptRatio(title, JP) + scriptRatio(title, KR) + scriptRatio(title, TH)) >= 0.1
+      return hasVietnamese || !hasAsian
+    }
     case 'US':
-    case 'PH': return (scriptRatio(title, CJK) + scriptRatio(title, JP) + scriptRatio(title, KR) + scriptRatio(title, TH)) < 0.2
-    default: return true
+    case 'PH':
+      if (country === region) return true
+      if (lang && !lang.startsWith('en')) return false
+      return (scriptRatio(title, CJK) + scriptRatio(title, JP) + scriptRatio(title, KR) + scriptRatio(title, TH)) < 0.2
+    default:
+      return true
   }
 }
 
-// 遊戲名稱正規化比對：移除標點/空格，支援大小寫與部分匹配
 function isGameRelevant(title: string, description: string, gameName: string): boolean {
   const normalize = (s: string) => s.toLowerCase().replace(/[\s.\-_\/\\·•]/g, '')
   const normGame = normalize(gameName)
   const normTitle = normalize(title)
   const normDesc = normalize(description)
 
-  // 完整正規化比對
   if (normTitle.includes(normGame) || normDesc.includes(normGame)) return true
 
-  // 拆詞比對：英文以空格/點分割，中文以 2 字元為單位
   const words = gameName.split(/[\s.\-_\/\\]/).filter(w => w.length >= 2)
   for (const word of words) {
     const normWord = normalize(word)
     if (normTitle.includes(normWord) || normDesc.includes(normWord)) return true
   }
 
-  // 中文拆字：每 2 個字元為一組滑動視窗
-  if (/[\u4e00-\u9fff]/.test(gameName)) {
+  if (/[一-鿿]/.test(gameName)) {
     for (let i = 0; i <= gameName.length - 2; i++) {
       const chunk = gameName.slice(i, i + 2)
       if (title.includes(chunk) || description.includes(chunk)) return true
@@ -65,7 +80,6 @@ function isGameRelevant(title: string, description: string, gameName: string): b
   return false
 }
 
-// Parse ISO 8601 duration → total seconds
 function parseDurationSeconds(iso: string): number {
   const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
   if (!m) return 0
@@ -83,8 +97,6 @@ const REGION_LANGUAGE: Record<string, string> = {
 }
 
 function getAuth() {
-  // 優先使用 JSON 字串環境變數（Vercel 部署用）
-  // 若無則退回讀取本機檔案路徑（本地開發用）
   let credentials: any
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
     credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
@@ -128,7 +140,6 @@ async function _searchWithYoutube(youtube: any, params: SearchParams): Promise<S
     searchParams.publishedBefore = d.toISOString()
   }
 
-  // 分頁抓取，最多 3 頁（150 筆），避免超出 API 配額
   const MAX_PAGES = 2
   const allItems: any[] = []
   let pageToken: string | undefined = undefined
@@ -144,10 +155,9 @@ async function _searchWithYoutube(youtube: any, params: SearchParams): Promise<S
 
   const items = allItems
 
-  // 取得影片統計數據 + 說明（分批，每次最多 50 筆）
   const allVideoIds: string[] = items.map((i: any) => i.id?.videoId).filter(Boolean)
-  let statsMap: Record<string, any> = {}
-  let channelIds: string[] = []
+  const statsMap: Record<string, any> = {}
+  const channelIds: string[] = []
 
   for (let i = 0; i < allVideoIds.length; i += 50) {
     const batchIds = allVideoIds.slice(i, i + 50)
@@ -163,24 +173,27 @@ async function _searchWithYoutube(youtube: any, params: SearchParams): Promise<S
         channelId: v.snippet?.channelId || '',
         thumbnail: v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url || '',
         isShort: durationSec > 0 && durationSec <= 60,
+        defaultLanguage: v.snippet?.defaultLanguage || v.snippet?.defaultAudioLanguage || '',
       }
       if (v.snippet?.channelId) channelIds.push(v.snippet.channelId)
     }
   }
 
-  // 取得頻道訂閱數
   const subscriberMap: Record<string, number> = {}
+  const channelCountryMap: Record<string, string> = {}
   const uniqueChannelIds = Array.from(new Set(channelIds))
   if (uniqueChannelIds.length > 0) {
-    // YouTube API allows max 50 per request
     for (let i = 0; i < uniqueChannelIds.length; i += 50) {
       const batch = uniqueChannelIds.slice(i, i + 50)
       const chanRes = await youtube.channels.list({
-        part: ['statistics'],
+        part: ['statistics', 'snippet'],
         id: batch,
       })
       for (const ch of chanRes.data.items || []) {
         subscriberMap[ch.id!] = Number(ch.statistics?.subscriberCount) || 0
+        if (ch.snippet?.country) {
+          channelCountryMap[ch.id!] = ch.snippet.country.toUpperCase()
+        }
       }
     }
   }
@@ -199,14 +212,13 @@ async function _searchWithYoutube(youtube: any, params: SearchParams): Promise<S
     const thumbnailUrl = extra?.thumbnail || snippet?.thumbnails?.medium?.url || ''
     const viewCount = Number(stats.viewCount) || 0
     const isShort = extra?.isShort === true
+    const defaultLanguage: string = extra?.defaultLanguage || ''
+    const channelCountry: string = channelCountryMap[channelId] || ''
 
-    // 最低觀看數過濾
     if (params.minViews && viewCount < params.minViews) continue
 
-    // 依地區語言過濾標題
-    if (!isRelevantForRegion(snippet?.title || '', params.region)) continue
+    if (!isRegionMatch(snippet?.title || '', params.region, defaultLanguage, channelCountry)) continue
 
-    // 遊戲名稱相關性過濾：支援正規化與部分比對
     if (!isGameRelevant(snippet?.title || '', description, params.game)) continue
 
     const { score, signals } = scoreContent(snippet?.title || '', description, params.game)
@@ -237,13 +249,11 @@ async function _searchWithYoutube(youtube: any, params: SearchParams): Promise<S
 export async function searchYouTube(params: SearchParams): Promise<SearchResult[]> {
   const key2 = process.env.YOUTUBE_API_KEY_2
 
-  // 主要：使用 Service Account（專案A）
   try {
     const auth = getAuth()
     const youtube = google.youtube({ version: 'v3', auth })
     return await _searchWithYoutube(youtube, params)
   } catch (e: any) {
-    // 配額用完時，自動切換到第二組 API Key（專案B）
     if (isQuotaError(e) && key2) {
       return await searchYouTubeWithKey(key2, params)
     }
