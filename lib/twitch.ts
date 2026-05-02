@@ -38,6 +38,24 @@ async function twitchFetch(path: string, token: string): Promise<any> {
   return res.json()
 }
 
+// Twitch language code → region mapping
+const REGION_LANG: Record<string, string[]> = {
+  TW: ['zh'],
+  JP: ['ja'],
+  KR: ['ko'],
+  TH: ['th'],
+  VN: ['vi'],
+  US: ['en'],
+  PH: ['en', 'tl'],
+}
+
+function isLangMatch(clipLang: string, region: string): boolean {
+  if (!clipLang) return true // 沒有語言標記則不過濾
+  const allowed = REGION_LANG[region]
+  if (!allowed) return true
+  return allowed.includes(clipLang.toLowerCase())
+}
+
 export async function searchTwitch(params: SearchParams): Promise<SearchResult[]> {
   const token = await getAppToken()
   const results: SearchResult[] = []
@@ -50,8 +68,8 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
   const gameId: string | undefined = gameData.data?.[0]?.id
 
   if (gameId) {
-    // 用遊戲 ID 搜 Clips
-    let clipsPath = `/clips?game_id=${gameId}&first=20`
+    // 用遊戲 ID 搜 Clips，帶 first=50 多拿幾筆讓過濾後還有足夠結果
+    let clipsPath = `/clips?game_id=${gameId}&first=50`
     if (params.dateFrom) clipsPath += `&started_at=${new Date(params.dateFrom).toISOString()}`
 
     const clipsData = await twitchFetch(clipsPath, token)
@@ -61,6 +79,9 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
         toDate.setHours(23, 59, 59)
         if (new Date(clip.created_at) > toDate) continue
       }
+
+      // 依語言過濾地區
+      if (!isLangMatch(clip.language || '', params.region)) continue
 
       const { score, signals } = scoreContent(clip.title || '', clip.title || '', params.game)
       results.push({
@@ -86,6 +107,7 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
       )
       for (const ch of searchData.data || []) {
         if (!ch.is_live) continue
+        if (!isLangMatch(ch.broadcaster_language || '', params.region)) continue
         const { score, signals } = scoreContent(ch.display_name || '', ch.title || '', params.game)
         results.push({
           platform: 'twitch',
