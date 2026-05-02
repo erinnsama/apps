@@ -68,7 +68,7 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
   const gameId: string | undefined = gameData.data?.[0]?.id
 
   if (gameId) {
-    // 用遊戲 ID 搜 Clips，帶 first=50 多拿幾筆讓過濾後還有足夠結果
+    // Clips
     let clipsPath = `/clips?game_id=${gameId}&first=50`
     if (params.dateFrom) clipsPath += `&started_at=${new Date(params.dateFrom).toISOString()}`
 
@@ -79,14 +79,12 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
         toDate.setHours(23, 59, 59)
         if (new Date(clip.created_at) > toDate) continue
       }
-
-      // 依語言過濾地區
       if (!isLangMatch(clip.language || '', params.region)) continue
 
       const { score, signals } = scoreContent(clip.title || '', clip.title || '', params.game)
       results.push({
         platform: 'twitch',
-        title: clip.title || '',
+        title: `[Clip] ${clip.title || ''}`,
         url: clip.url,
         channelName: clip.broadcaster_name,
         region: params.region,
@@ -98,6 +96,42 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
         description: clip.title || '',
       })
     }
+
+    // VODs（錄影）
+    let vodsPath = `/videos?game_id=${gameId}&type=archive&first=30`
+    if (params.dateFrom) vodsPath += `&after=${encodeURIComponent(new Date(params.dateFrom).toISOString())}`
+
+    try {
+      const vodsData = await twitchFetch(vodsPath, token)
+      for (const vod of vodsData.data || []) {
+        if (params.dateTo) {
+          const toDate = new Date(params.dateTo)
+          toDate.setHours(23, 59, 59)
+          if (new Date(vod.created_at) > toDate) continue
+        }
+        if (!isLangMatch(vod.language || '', params.region)) continue
+
+        const body = `${vod.title || ''} ${vod.description || ''}`
+        const { score, signals } = scoreContent(vod.title || '', body, params.game)
+        const thumb = vod.thumbnail_url
+          ? vod.thumbnail_url.replace('%{width}', '320').replace('%{height}', '180')
+          : undefined
+
+        results.push({
+          platform: 'twitch',
+          title: `[VOD] ${vod.title || ''}`,
+          url: vod.url,
+          channelName: vod.user_name,
+          region: params.region,
+          publishedAt: vod.created_at?.slice(0, 10) || '',
+          score,
+          signals,
+          viewCount: vod.view_count,
+          thumbnailUrl: thumb,
+          description: vod.description || '',
+        })
+      }
+    } catch { /* ignore */ }
   } else {
     // 找不到遊戲 ID 時，用 channel 搜尋作為備援
     try {
