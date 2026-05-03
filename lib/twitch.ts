@@ -150,27 +150,51 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
       }
     } catch { /* ignore */ }
   } else {
-    // 找不到遊戲 ID 時，用 channel 搜尋作為備援
+    // 找不到遊戲 ID 時，搜頻道名稱，再抓各頻道的 VOD
     try {
       const searchData = await twitchFetch(
-        `/search/channels?query=${encodeURIComponent(params.game)}&first=20`,
+        `/search/channels?query=${encodeURIComponent(lookupName)}&first=15`,
         token
       )
-      for (const ch of searchData.data || []) {
-        if (!ch.is_live) continue
-        if (!isLangMatch(ch.broadcaster_language || '', params.region)) continue
-        const { score, signals } = scoreContent(ch.display_name || '', ch.title || '', params.game)
-        results.push({
-          platform: 'twitch',
-          title: ch.title || ch.display_name || '',
-          url: `https://www.twitch.tv/${ch.broadcaster_login}`,
-          channelName: ch.display_name,
-          region: params.region,
-          publishedAt: ch.started_at?.slice(0, 10) || '',
-          score,
-          signals,
-          thumbnailUrl: ch.thumbnail_url,
-        })
+      const channels = (searchData.data || []).filter((ch: any) =>
+        isLangMatch(ch.broadcaster_language || '', params.region)
+      )
+
+      // 對每個頻道撈最近 VOD（最多取 10 個頻道，每台 10 部）
+      const vodTasks = channels.slice(0, 10).map((ch: any) =>
+        twitchFetch(`/videos?user_id=${ch.id}&type=archive&first=10`, token)
+          .then((res: any) => ({ ch, vods: res.data || [] }))
+          .catch(() => ({ ch, vods: [] as any[] }))
+      )
+      const vodResults = await Promise.all(vodTasks)
+
+      for (const { ch, vods } of vodResults) {
+        for (const vod of vods) {
+          if (params.dateFrom && new Date(vod.created_at) < new Date(params.dateFrom)) continue
+          if (params.dateTo) {
+            const toDate = new Date(params.dateTo)
+            toDate.setHours(23, 59, 59)
+            if (new Date(vod.created_at) > toDate) continue
+          }
+          const body = `${vod.title || ''} ${vod.description || ''}`
+          const { score, signals } = scoreContent(vod.title || '', body, params.game)
+          const thumb = vod.thumbnail_url
+            ? vod.thumbnail_url.replace('%{width}', '320').replace('%{height}', '180')
+            : ch.thumbnail_url
+          results.push({
+            platform: 'twitch',
+            title: `[VOD] ${vod.title || ''}`,
+            url: vod.url,
+            channelName: ch.display_name,
+            region: params.region,
+            publishedAt: vod.created_at?.slice(0, 10) || '',
+            score,
+            signals,
+            viewCount: vod.view_count,
+            thumbnailUrl: thumb,
+            description: vod.description || '',
+          })
+        }
       }
     } catch { /* ignore */ }
   }
