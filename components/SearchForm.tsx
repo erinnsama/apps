@@ -23,6 +23,7 @@ interface Props {
     dateTo: string
     order: string
     minViews: number
+    twitchGameName?: string
   }) => void
   loading: boolean
 }
@@ -37,6 +38,7 @@ export default function SearchForm({ onSearch, loading }: Props) {
   const [order, setOrder] = useState('relevance')
   const [minViews, setMinViews] = useState('')
   const [regionalNames, setRegionalNames] = useState<Record<string, string>>({})
+  const [twitchGameName, setTwitchGameName] = useState('')
 
   function toggleRegion(code: string) {
     setRegions(prev =>
@@ -52,8 +54,8 @@ export default function SearchForm({ onSearch, loading }: Props) {
 
   function handleGameChange(val: string) {
     setGame(val)
-    // Reset all regional names when game changes
     setRegionalNames({})
+    setTwitchGameName('')
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -69,6 +71,7 @@ export default function SearchForm({ onSearch, loading }: Props) {
       dateTo,
       order,
       minViews: Number(minViews) || 0,
+      twitchGameName: twitchGameName.trim() || undefined,
     })
   }
 
@@ -199,6 +202,20 @@ export default function SearchForm({ onSearch, loading }: Props) {
           />
         </div>
       </div>
+
+      {/* Twitch game name override */}
+      {platforms.includes('twitch') && (
+        <div className="bg-slate-900 border border-slate-700 rounded-lg p-3">
+          <p className="text-slate-400 text-xs mb-2">Twitch 遊戲名稱（不填則沿用上方名稱）</p>
+          <input
+            className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-sm placeholder-slate-500"
+            placeholder={`例：${game || 'Archero'} → 填入 Twitch 上的正確英文名稱`}
+            value={twitchGameName}
+            onChange={e => setTwitchGameName(e.target.value)}
+          />
+          <p className="text-slate-600 text-xs mt-1">Twitch 遊戲分類通常為英文，搜尋中文名稱可能找不到結果</p>
+        </div>
+      )}
 
       {/* Platforms */}
       <div>

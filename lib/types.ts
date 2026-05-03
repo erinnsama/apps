@@ -29,4 +29,5 @@ export interface SearchParams {
   dateTo: string
   order?: 'relevance' | 'date' | 'viewCount'
   minViews?: number
+  twitchGameName?: string   // Twitch 專用遊戲名稱（英文），覆蓋 game 欄位用於 Twitch 查詢
 }

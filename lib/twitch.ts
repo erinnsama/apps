@@ -60,31 +60,25 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
   const token = await getAppToken()
   const results: SearchResult[] = []
 
-  // 查遊戲 ID（同時搜原始名稱 + 透過 search 找近似名稱）
+  // 查遊戲 ID：優先用 twitchGameName（使用者手動指定），否則用 game
   let gameId: string | undefined
+  const lookupName = params.twitchGameName?.trim() || params.game
 
   const exactData = await twitchFetch(
-    `/games?name=${encodeURIComponent(params.game)}`,
+    `/games?name=${encodeURIComponent(lookupName)}`,
     token
   )
   if (exactData.data?.[0]?.id) {
     gameId = exactData.data[0].id
   } else {
-    // 找不到精確名稱時，用搜尋取第一個近似結果
+    // 精確名稱找不到時，用 search/categories 模糊比對（取前 5 筆，選第一筆）
     try {
-      const searchData = await twitchFetch(
-        `/games?name=${encodeURIComponent(params.game)}&igdb_id=`,
+      const catData = await twitchFetch(
+        `/search/categories?query=${encodeURIComponent(lookupName)}&first=5`,
         token
       )
-      if (!searchData.data?.[0]) {
-        // 嘗試 search categories
-        const catData = await twitchFetch(
-          `/search/categories?query=${encodeURIComponent(params.game)}&first=1`,
-          token
-        )
-        if (catData.data?.[0]) {
-          gameId = catData.data[0].id
-        }
+      if (catData.data?.[0]) {
+        gameId = catData.data[0].id
       }
     } catch { /* ignore */ }
   }
