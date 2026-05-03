@@ -84,6 +84,34 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
   }
 
   if (gameId) {
+    // 直播中的 streams
+    try {
+      const streamsData = await twitchFetch(
+        `/streams?game_id=${gameId}&first=20`,
+        token
+      )
+      for (const stream of streamsData.data || []) {
+        const { score, signals } = scoreContent(stream.title || '', stream.title || '', params.game)
+        const thumb = stream.thumbnail_url
+          ? stream.thumbnail_url.replace('{width}', '320').replace('{height}', '180')
+          : undefined
+        results.push({
+          platform: 'twitch',
+          title: `[直播中] ${stream.title || ''}`,
+          url: `https://www.twitch.tv/${stream.user_login}`,
+          channelName: stream.user_name,
+          region: params.region,
+          publishedAt: new Date().toISOString().slice(0, 10),
+          score,
+          signals,
+          viewCount: stream.viewer_count,
+          thumbnailUrl: thumb,
+          description: stream.title || '',
+          isLive: true,
+        })
+      }
+    } catch { /* ignore */ }
+
     // Clips
     let clipsPath = `/clips?game_id=${gameId}&first=50`
     if (params.dateFrom) clipsPath += `&started_at=${new Date(params.dateFrom).toISOString()}`
@@ -95,8 +123,6 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
         toDate.setHours(23, 59, 59)
         if (new Date(clip.created_at) > toDate) continue
       }
-      if (!isLangMatch(clip.language || '', params.region)) continue
-
       const { score, signals } = scoreContent(clip.title || '', clip.title || '', params.game)
       results.push({
         platform: 'twitch',
@@ -126,8 +152,6 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
           toDate.setHours(23, 59, 59)
           if (new Date(vod.created_at) > toDate) continue
         }
-        if (!isLangMatch(vod.language || '', params.region)) continue
-
         const body = `${vod.title || ''} ${vod.description || ''}`
         const { score, signals } = scoreContent(vod.title || '', body, params.game)
         const thumb = vod.thumbnail_url

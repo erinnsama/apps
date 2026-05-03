@@ -2,6 +2,19 @@
 
 import { useState } from 'react'
 
+const TWITCH_NAME_MAP: Record<string, string> = {
+  '點點英雄': 'Dicero',
+  '噠噠特攻': 'Survivor.io',
+  '原神': 'Genshin Impact',
+  '傳說對決': 'Arena of Valor',
+  '第五人格': 'Identity V',
+  '明日方舟': 'Arknights',
+  '王者榮耀': 'Honor of Kings',
+  '幻塔': 'Tower of Fantasy',
+  '弓箭傳說': 'Archero',
+  '弓箭傳說2': 'Archero 2',
+}
+
 const ALL_REGIONS = [
   { code: 'TW', label: '台灣' },
   { code: 'JP', label: '日本' },
@@ -55,7 +68,7 @@ export default function SearchForm({ onSearch, loading }: Props) {
   function handleGameChange(val: string) {
     setGame(val)
     setRegionalNames({})
-    setTwitchGameName('')
+    setTwitchGameName(TWITCH_NAME_MAP[val.trim()] || '')
   }
 
   function handleSubmit(e: React.FormEvent) {

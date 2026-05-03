@@ -16,6 +16,7 @@ export interface SearchResult {
   subscriberCount?: number
   channelId?: string
   isShort?: boolean
+  isLive?: boolean
 }
 
 export interface SearchParams {

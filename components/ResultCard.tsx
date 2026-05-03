@@ -54,6 +54,12 @@ export default function ResultCard({ result }: { result: SearchResult }) {
                     Short
                   </span>
                 )}
+                {result.isLive && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-600 text-white flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse inline-block" />
+                    直播中
+                  </span>
+                )}
                 <span className="text-xs text-slate-400">{result.region}</span>
                 <span className="text-xs text-slate-500">{result.publishedAt}</span>
               </div>
