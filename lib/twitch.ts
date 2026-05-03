@@ -150,26 +150,54 @@ export async function searchTwitch(params: SearchParams): Promise<SearchResult[]
       }
     } catch { /* ignore */ }
   } else {
-    // 找不到遊戲 ID 時，搜頻道名稱，再抓各頻道的 VOD
+    // 找不到遊戲 ID 時：搜頻道 → 抓 VOD → 過濾標題含關鍵字的
     try {
-      const searchData = await twitchFetch(
-        `/search/channels?query=${encodeURIComponent(lookupName)}&first=15`,
-        token
+      // 同時用原始名稱 + lookupName 搜（避免中英文都找不到）
+      const queries = Array.from(new Set([params.game, lookupName]))
+      const channelSearches = await Promise.all(
+        queries.map(q =>
+          twitchFetch(`/search/channels?query=${encodeURIComponent(q)}&first=20`, token)
+            .catch(() => ({ data: [] }))
+        )
       )
-      const channels = (searchData.data || []).filter((ch: any) =>
+      // 合併去重頻道
+      const channelMap = new Map<string, any>()
+      for (const res of channelSearches) {
+        for (const ch of res.data || []) {
+          if (!channelMap.has(ch.id)) channelMap.set(ch.id, ch)
+        }
+      }
+      const channels = Array.from(channelMap.values()).filter((ch: any) =>
         isLangMatch(ch.broadcaster_language || '', params.region)
       )
 
-      // 對每個頻道撈最近 VOD（最多取 10 個頻道，每台 10 部）
-      const vodTasks = channels.slice(0, 10).map((ch: any) =>
-        twitchFetch(`/videos?user_id=${ch.id}&type=archive&first=10`, token)
+      // 每個頻道拉最近 20 部 VOD
+      const vodTasks = channels.slice(0, 15).map((ch: any) =>
+        twitchFetch(`/videos?user_id=${ch.id}&type=archive&first=20`, token)
           .then((res: any) => ({ ch, vods: res.data || [] }))
           .catch(() => ({ ch, vods: [] as any[] }))
       )
       const vodResults = await Promise.all(vodTasks)
 
+      // 標題是否包含遊戲關鍵字（支援中文片段）
+      const titleContainsKeyword = (title: string): boolean => {
+        const norm = (s: string) => s.toLowerCase().replace(/\s/g, '')
+        const t = norm(title)
+        if (t.includes(norm(params.game))) return true
+        if (lookupName !== params.game && t.includes(norm(lookupName))) return true
+        // 中文兩字片段比對
+        if (/[一-鿿]/.test(params.game)) {
+          for (let i = 0; i <= params.game.length - 2; i++) {
+            if (title.includes(params.game.slice(i, i + 2))) return true
+          }
+        }
+        return false
+      }
+
       for (const { ch, vods } of vodResults) {
         for (const vod of vods) {
+          // 標題不含關鍵字則跳過
+          if (!titleContainsKeyword(vod.title || '')) continue
           if (params.dateFrom && new Date(vod.created_at) < new Date(params.dateFrom)) continue
           if (params.dateTo) {
             const toDate = new Date(params.dateTo)
